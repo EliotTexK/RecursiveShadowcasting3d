@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3 uid="uid://bga3j3shamlvr"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ig7tw"]
+resource_local_to_scene = true
+shading_mode = 0
+albedo_color = Color(1, 0, 0, 1)
+
+[sub_resource type="TubeTrailMesh" id="TubeTrailMesh_7dm0k"]
+resource_local_to_scene = true
+material = SubResource("StandardMaterial3D_ig7tw")
+radius = 0.005
+sections = 2
+
+[node name="DebugLine3D" type="DebugLine3D"]
+transform = Transform3D(-8.74228e-08, 2, 0, -2, -8.74228e-08, 0, 0, 0, 2, 0, 0, 0)
+mesh = SubResource("TubeTrailMesh_7dm0k")
+skeleton = NodePath("")

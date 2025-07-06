@@ -1,0 +1,21 @@
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.1
+reloadable = true
+
+[libraries]
+linux.debug.x86_64 =     "res://../recursiveshadowcasting3d-rs/target/debug/librecursiveshadowcasting3d_rs.so"
+linux.release.x86_64 =   "res://../recursiveshadowcasting3d-rs/target/release/librecursiveshadowcasting3d_rs.so"
+windows.debug.x86_64 =   "res://../recursiveshadowcasting3d-rs/target/debug/recursiveshadowcasting3d_rs.dll"
+windows.release.x86_64 = "res://../recursiveshadowcasting3d-rs/target/release/recursiveshadowcasting3d_rs.dll"
+macos.debug =            "res://../recursiveshadowcasting3d-rs/target/debug/librecursiveshadowcasting3d_rs.dylib"
+macos.release =          "res://../recursiveshadowcasting3d-rs/target/release/librecursiveshadowcasting3d_rs.dylib"
+macos.debug.arm64 =      "res://../recursiveshadowcasting3d-rs/target/debug/librecursiveshadowcasting3d_rs.dylib"
+macos.release.arm64 =    "res://../recursiveshadowcasting3d-rs/target/release/librecursiveshadowcasting3d_rs.dylib"
+web.debug.wasm32 =       "res://../recursiveshadowcasting3d-rs/target/wasm32-unknown-emscripten/debug/recursiveshadowcasting3d_rs.wasm"
+web.release.wasm32 =     "res://../recursiveshadowcasting3d-rs/target/wasm32-unknown-emscripten/release/recursiveshadowcasting3d_rs.wasm"
+
+[icons]
+
+Display      = "res://addons/recursiveshadowcasting3d_rs/Node3DOxidized.svg"
+ShadowCaster = "res://addons/recursiveshadowcasting3d_rs/Node3DOxidized.svg"

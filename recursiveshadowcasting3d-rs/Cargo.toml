@@ -1,0 +1,19 @@
+[package]
+name = "recursiveshadowcasting3d-rs"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+godot = "0.3.2"
+itertools = "0.14.0"
+ndarray = "0.16.1"
+
+[profile.dev]
+debug = true
+
+[profile.release]
+lto = true
+opt-level = "s" # optimize for size

@@ -1,0 +1,21 @@
+{
+    "configurations": [
+      {
+        "name": "Debug Game Process",
+        "type": "lldb",
+        "request": "launch",
+        "program": "/usr/bin/godot",
+        "args": [
+          "--path", "${workspaceFolder}/recursiveshadowcasting3d-godot",
+          "--debug-collisions",
+          "--debug-navigation"
+        ],
+        "cwd": "${workspaceFolder}",
+        "stopOnEntry": false,
+        "sourceMap": {
+          "/rustc/*": null
+        },
+        "preLaunchTask": "cargo-build",
+      }
+    ]
+  }
