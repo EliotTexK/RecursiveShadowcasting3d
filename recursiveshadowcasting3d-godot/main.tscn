@@ -33,12 +33,6 @@ rings = 1
 [node name="Display" type="Display" parent="."]
 debug_line_scene = ExtResource("1_ig7tw")
 
-[node name="Cube" type="MeshInstance3D" parent="Display"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 4)
-mesh = SubResource("BoxMesh_0xm2m")
-skeleton = NodePath("../..")
-script = ExtResource("2_h2yge")
-
 [node name="Cube3" type="MeshInstance3D" parent="Display"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 4)
 mesh = SubResource("BoxMesh_0xm2m")
@@ -89,18 +83,6 @@ script = ExtResource("2_h2yge")
 
 [node name="Cube5" type="MeshInstance3D" parent="Display"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 4)
-mesh = SubResource("BoxMesh_0xm2m")
-skeleton = NodePath("../..")
-script = ExtResource("2_h2yge")
-
-[node name="Cube6" type="MeshInstance3D" parent="Display"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 4)
-mesh = SubResource("BoxMesh_0xm2m")
-skeleton = NodePath("../..")
-script = ExtResource("2_h2yge")
-
-[node name="Cube7" type="MeshInstance3D" parent="Display"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 5)
 mesh = SubResource("BoxMesh_0xm2m")
 skeleton = NodePath("../..")
 script = ExtResource("2_h2yge")

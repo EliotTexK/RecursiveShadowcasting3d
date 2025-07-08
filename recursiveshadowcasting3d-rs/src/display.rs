@@ -1,10 +1,31 @@
-use std::{cmp::min, f32::INFINITY};
+use std::f32::INFINITY;
 
 use godot::{obj::WithBaseField, prelude::*};
-use itertools::Itertools;
-use ndarray::{Array2, Array3};
+use ndarray::Array3;
 
 use crate::debug_line_3d::DebugLine3D;
+
+pub struct Rect {
+    sx: f32,
+    sy: f32,
+    // represent end, not length
+    ex: f32,
+    ey: f32,
+}
+
+impl Rect {
+    fn new(sx: f32, sy: f32, ex: f32, ey: f32) -> Self {
+        Rect { sx, sy, ex, ey }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.sx >= self.ex || self.sy >= self.ey
+    }
+
+    fn intersects(&self, other: &Rect) -> bool {
+        self.sx < other.ex && other.sx < self.ex && self.sy < other.ey && other.sy < self.ey
+    }
+}
 
 #[derive(GodotConvert, Var, Export, Debug)]
 #[godot(via = GString)]
@@ -34,20 +55,18 @@ impl INode3D for Display {
     }
 
     fn ready(&mut self) {
-        let initial_slope_rect = SlopeRect {
+        let initial_slope_rect = Rect {
             sx: INFINITY,
             sy: INFINITY,
             ex: 1.0,
             ey: 1.0,
         };
-        let mut visited_buffer_2d = Array2::from_elem((MAX_DEPTH, MAX_DEPTH), false);
-        cast_light(self, &initial_slope_rect, 1, &mut visited_buffer_2d);
+        cast_light(self, &initial_slope_rect, 1);
     }
 }
 
 #[godot_api]
 impl Display {
-    #[func]
     pub fn draw_debug_line(
         &mut self,
         sx: f32,
@@ -72,35 +91,31 @@ impl Display {
         self.base_mut().add_child(&line);
     }
 
-    #[func]
     pub fn draw_debug_rect(
         &mut self,
         plane: CoordinatePlane3D,
         depth: f32,
-        sx: f32,
-        sy: f32,
-        ex: f32,
-        ey: f32,
+        rect: &Rect,
         color: Color,
     ) {
         match plane {
             CoordinatePlane3D::XY => {
-                self.draw_debug_line(sx, sy, depth, ex, sy, depth, color);
-                self.draw_debug_line(sx, sy, depth, sx, ey, depth, color);
-                self.draw_debug_line(ex, sy, depth, ex, ey, depth, color);
-                self.draw_debug_line(sx, ey, depth, ex, ey, depth, color);
+                self.draw_debug_line(rect.sx, rect.sy, depth, rect.ex, rect.sy, depth, color);
+                self.draw_debug_line(rect.sx, rect.sy, depth, rect.sx, rect.ey, depth, color);
+                self.draw_debug_line(rect.ex, rect.sy, depth, rect.ex, rect.ey, depth, color);
+                self.draw_debug_line(rect.sx, rect.ey, depth, rect.ex, rect.ey, depth, color);
             }
             CoordinatePlane3D::YZ => {
-                self.draw_debug_line(depth, sx, sy, depth, ex, sy, color);
-                self.draw_debug_line(depth, sx, sy, depth, sx, ey, color);
-                self.draw_debug_line(depth, ex, sy, depth, ex, ey, color);
-                self.draw_debug_line(depth, sx, ey, depth, ex, ey, color);
+                self.draw_debug_line(depth, rect.sx, rect.sy, depth, rect.ex, rect.sy, color);
+                self.draw_debug_line(depth, rect.sx, rect.sy, depth, rect.sx, rect.ey, color);
+                self.draw_debug_line(depth, rect.ex, rect.sy, depth, rect.ex, rect.ey, color);
+                self.draw_debug_line(depth, rect.sx, rect.ey, depth, rect.ex, rect.ey, color);
             }
             CoordinatePlane3D::XZ => {
-                self.draw_debug_line(sx, depth, sy, ex, depth, sy, color);
-                self.draw_debug_line(sx, depth, sy, sx, depth, ey, color);
-                self.draw_debug_line(ex, depth, sy, ex, depth, ey, color);
-                self.draw_debug_line(sx, depth, ey, ex, depth, ey, color);
+                self.draw_debug_line(rect.sx, depth, rect.sy, rect.ex, depth, rect.sy, color);
+                self.draw_debug_line(rect.sx, depth, rect.sy, rect.sx, depth, rect.ey, color);
+                self.draw_debug_line(rect.ex, depth, rect.sy, rect.ex, depth, rect.ey, color);
+                self.draw_debug_line(rect.sx, depth, rect.ey, rect.ex, depth, rect.ey, color);
             }
         }
     }
@@ -118,334 +133,363 @@ impl Display {
 
 const MAX_DEPTH: usize = 5;
 
-struct SlopeRect {
-    sx: f32,
-    sy: f32,
-    ex: f32,
-    ey: f32,
-}
-
-fn cast_light(
-    display: &mut Display,
-    slope_rect: &SlopeRect,
-    depth: usize,
-    // Buffer for storing visited cells in the rectangle difference subroutine,
-    // reused to prevent reallocation
-    visited_buffer_2d: &mut Array2<bool>,
-) {
+fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize) {
     if depth > MAX_DEPTH {
         return;
     }
 
-    // Calculate start and end slopes at this depth
-    let sx_at_depth = (depth as f32) / slope_rect.sx;
-    let sy_at_depth = (depth as f32) / slope_rect.sy;
-    let ex_at_depth = (depth as f32) / slope_rect.ex;
-    let ey_at_depth = (depth as f32) / slope_rect.ey;
-
-    display.draw_debug_rect(
-        CoordinatePlane3D::XY,
-        depth as f32,
-        sx_at_depth,
-        sy_at_depth,
-        ex_at_depth,
-        ey_at_depth,
-        Color::CYAN,
-    );
-
-    // Convert slopes to indices
-    let s_ix = sx_at_depth.floor() as usize;
-    let e_ix = ex_at_depth.ceil() as usize;
-    let s_iy = sy_at_depth.floor() as usize;
-    let e_iy = ey_at_depth.ceil() as usize;
-
-    // Draw rectangle representing start and end ranges checked
-    display.draw_debug_rect(
-        CoordinatePlane3D::XY,
-        depth as f32 + 0.01,
-        s_ix as f32,
-        s_iy as f32,
-        e_ix as f32,
-        e_iy as f32,
-        Color::RED,
-    );
-
-    // clear the part of the visited buffer being used
-    for index in (s_ix..=e_ix).cartesian_product(s_iy..=e_iy) {
-        *visited_buffer_2d.get_mut(index).expect("Out of bounds") = false;
-    }
-
-    // Find the difference between the rectangular region and all occluded cells within it,
-    // decomposed into a "significantly" (optimal is NP hard) small set of rectangular regions.
-    // let mut rectangles: Vec<SlopeRect> = Vec::new();
-
-    // loop exhaustively
-    for x in s_ix..=e_ix {
-        for y in s_iy..=e_iy {
-            // skip visited and occluded cells
-            if is_visited_or_occluded(&visited_buffer_2d, &display.occluded, x, y, depth) {
-                continue;
-            }
-
-            // Now, extend a rectangle into non-blocked and non-visited cells
-            let (rect_end_x, rect_end_y) = grow_rectangle_and_visit(
-                visited_buffer_2d,
-                &display.occluded,
-                x,
-                y,
-                e_ix,
-                e_iy,
-                depth,
-            );
-
-            // Stop checking more start points if we ended at the end corner of our rectangle bounds
-            // TODO
-
-            // Convert indices to slopes
-
-            // Bounded by obstruction: more permissive
-            // Bounded by start of rect: less permissive, keep old
-
-            let mut new_sx = slope_rect.sx;
-            if x != s_ix {
-                new_sx = (depth as f32 - 0.5) / (x as f32 - 0.5);
-            }
-
-            let mut new_sy = slope_rect.sy;
-            if y != s_iy {
-                new_sy = (depth as f32 - 0.5) / (y as f32 - 0.5);
-            }
-
-            // Bounded by obstruction: less permissive
-            // Bounded by end of rect: keep old
-            let mut new_ex = slope_rect.ex;
-            if rect_end_x != e_ix {
-                new_ex = (depth as f32 + 0.5) / (rect_end_x as f32 + 0.5);
-            }
-
-            let mut new_ey = slope_rect.ey;
-            if rect_end_y != e_iy {
-                new_ey = (depth as f32 + 0.5) / (rect_end_y as f32 + 0.5);
-            }
-
-            // Edge case: skip zero or negative area slope rectangles
-            if new_sx <= new_ex || new_sy <= new_ey {
-                continue;
-            }
-
-            let new_sx_at_depth = (depth as f32 + 0.5) / new_sx;
-            let new_sy_at_depth = (depth as f32 + 0.5) / new_sy;
-            let new_ex_at_depth = (depth as f32 + 0.5) / new_ex;
-            let new_ey_at_depth = (depth as f32 + 0.5) / new_ey;
-
-            // Draw rectangle representing start and end slopes
-            display.draw_debug_rect(
-                CoordinatePlane3D::XY,
-                depth as f32 + 0.5,
-                new_sx_at_depth,
-                new_sy_at_depth,
-                new_ex_at_depth,
-                new_ey_at_depth,
-                Color::GREEN,
-            );
-            display.draw_debug_line(
-                0.0,
-                0.0,
-                0.0,
-                new_sx_at_depth,
-                new_sy_at_depth,
-                depth as f32 + 0.5,
-                Color::GREEN,
-            );
-            display.draw_debug_line(
-                0.0,
-                0.0,
-                0.0,
-                new_sx_at_depth,
-                new_ey_at_depth,
-                depth as f32 + 0.5,
-                Color::GREEN,
-            );
-            display.draw_debug_line(
-                0.0,
-                0.0,
-                0.0,
-                new_ex_at_depth,
-                new_sy_at_depth,
-                depth as f32 + 0.5,
-                Color::GREEN,
-            );
-            display.draw_debug_line(
-                0.0,
-                0.0,
-                0.0,
-                new_ex_at_depth,
-                new_ey_at_depth,
-                depth as f32 + 0.5,
-                Color::GREEN,
-            );
-
-            cast_light(
-                display,
-                &SlopeRect {
-                    sx: new_sx,
-                    sy: new_sy,
-                    ex: new_ex,
-                    ey: new_ey,
-                },
-                depth + 1,
-                visited_buffer_2d,
-            );
-        }
-    }
-}
-
-// Precondition: the cell at (x, y, depth) is not occluded or visited
-// Return: endpoints of the grown rectangle
-fn grow_rectangle_and_visit(
-    visited: &mut Array2<bool>,
-    occluded: &Array3<bool>,
-    start_x: usize,
-    start_y: usize,
-    max_x: usize,
-    max_y: usize,
-    depth: usize,
-) -> (usize, usize) {
-    #[derive(PartialEq, Eq)]
-    enum ObstructionResult {
-        NoObstruction,
-        ObstructedX,
-        ObstructedY,
-    }
-
-    let mut obstruction_result = ObstructionResult::NoObstruction;
-    let mut edge_x = start_x;
-    let mut edge_y = start_y;
-
-    // Alternate increasing x and y until some boundary is reached
-    for offset in 1..=min(max_x - start_x, max_y - start_y) {
-        let end_x = start_x + offset;
-        let end_y = start_y + offset;
-
-        // Check if we can extend in the y direction
-        for x in start_x..=end_x {
-            if is_visited_or_occluded(visited, occluded, x, end_y, depth) {
-                obstruction_result = ObstructionResult::ObstructedY;
-                break;
-            }
-        }
-
-        // If possible, extend into the y direction
-        if obstruction_result == ObstructionResult::NoObstruction {
-            for x in start_x..=end_x {
-                *visited.get_mut((x, end_y)).expect("Out of bounds") = true;
-            }
-            edge_y = end_y;
-        }
-
-        // Small optimization: the corner cell has already been checked
-        let end_y = end_y - 1;
-
-        // Check if we can extend in the x direction
-        for y in start_y..=end_y {
-            if is_visited_or_occluded(visited, occluded, end_x, y, depth) {
-                obstruction_result = ObstructionResult::ObstructedX;
-                break;
-            }
-        }
-
-        // If possible, extend into the x direction
-        if obstruction_result == ObstructionResult::NoObstruction {
-            for y in start_y..=end_y {
-                *visited.get_mut((end_x, y)).expect("Out of bounds") = true;
-            }
-            edge_x = end_x;
-        }
-    }
-
-    // Handle the case of reaching the bounds of the total rectangular region
-    obstruction_result = match (edge_x == max_x, edge_y == max_y) {
-        (true, true) => ObstructionResult::NoObstruction,
-        (true, false) => ObstructionResult::ObstructedX,
-        (false, true) => ObstructionResult::ObstructedY,
-        (false, false) => obstruction_result,
+    // Calculate start and end slopes of the visible rectangle at this depth
+    let view_rect = Rect {
+        sx: (depth as f32 - 0.5) / slope_rect.sx,
+        sy: (depth as f32 - 0.5) / slope_rect.sy,
+        ex: (depth as f32 - 0.5) / slope_rect.ex,
+        ey: (depth as f32 - 0.5) / slope_rect.ey,
     };
 
-    // No obstructions encountered: return endpoints
-    if obstruction_result == ObstructionResult::NoObstruction {
-        return (edge_x, edge_y);
+    // Visualize view rectangle at this depth
+    display.draw_debug_rect(
+        CoordinatePlane3D::XY,
+        depth as f32 - 0.5,
+        &view_rect,
+        Color::CYAN,
+    );
+    // display.draw_debug_line(
+    //     0.0,
+    //     0.0,
+    //     0.0,
+    //     view_rect.sx,
+    //     view_rect.sy,
+    //     depth as f32 - 0.5,
+    //     Color::CYAN,
+    // );
+    // display.draw_debug_line(
+    //     0.0,
+    //     0.0,
+    //     0.0,
+    //     view_rect.sx,
+    //     view_rect.ey,
+    //     depth as f32 - 0.5,
+    //     Color::CYAN,
+    // );
+    // display.draw_debug_line(
+    //     0.0,
+    //     0.0,
+    //     0.0,
+    //     view_rect.ex,
+    //     view_rect.sy,
+    //     depth as f32 - 0.5,
+    //     Color::CYAN,
+    // );
+    // display.draw_debug_line(
+    //     0.0,
+    //     0.0,
+    //     0.0,
+    //     view_rect.ex,
+    //     view_rect.ey,
+    //     depth as f32 - 0.5,
+    //     Color::CYAN,
+    // );
+
+    // Find start and end xy indices which could possibly occlude the view at this depth
+    let mut s_ix = view_rect.sx.floor() as usize;
+    let mut s_iy = view_rect.sy.floor() as usize;
+
+    if s_ix > 0 {
+        s_ix = s_ix - 1;
     }
-    // Obstruction in the x direction: grow in y direction
-    else if obstruction_result == ObstructionResult::ObstructedX {
-        let end_x = edge_x;
+    if s_iy > 0 {
+        s_iy = s_iy - 1;
+    }
 
-        // Grow in the y direction until an obstruction is hit, or we reach bounds
-        for y in edge_y.clone() + 1..=max_y {
-            // Check if we can extend in the y direction
-            for x in start_x..=end_x {
-                if is_visited_or_occluded(visited, occluded, x, y, depth) {
-                    return (edge_x, edge_y);
-                }
-            }
+    let e_ix = view_rect.ex.ceil() as usize;
+    let e_iy = view_rect.ey.ceil() as usize;
 
-            // If possible, extend into the y direction
-            for x in start_x..=end_x {
-                *visited.get_mut((x, y)).expect("Out of bounds") = true;
+    
+
+    // Find occluded indices, convert them to rectangles
+    let mut occluding_rectangles: Vec<Rect> = Vec::new();
+    for x in s_ix..e_ix {
+        for y in s_iy..e_iy {
+            if display.occluded.get((x, y, depth)).is_some_and(|occluded| *occluded) {
+                let xf = x as f32;
+                let yf = y as f32;
+                let rect_occluded = Rect {
+                    // TODO: sx and sy need to be smaller
+                    sx: xf - 0.5 - ((xf - 0.5) / (depth as f32 + 0.5)),
+                    sy: yf - 0.5 - ((yf - 0.5) / (depth as f32 + 0.5)),
+                    ex: xf + 0.5,
+                    ey: yf + 0.5,
+                };
+                display.draw_debug_rect(
+                    CoordinatePlane3D::XY,
+                    depth as f32 - 0.5,
+                    &rect_occluded,
+                    Color::RED,
+                );
+                occluding_rectangles.push(rect_occluded);
             }
-            edge_y = y;
+            // here's where you would put your 
         }
-
-        // Grew maximally in the y direction
-        return (edge_x, edge_y);
     }
-    // Obstruction in the y direction: grow in x direction
-    else if obstruction_result == ObstructionResult::ObstructedY {
-        let end_y = edge_y;
 
-        // Grow in the x direction until an obstruction is hit, or we reach bounds
-        for x in edge_x.clone() + 1..=max_x {
-            // Check if we can extend in the x direction
-            for y in start_y..=end_y {
-                if is_visited_or_occluded(visited, occluded, x, y, depth) {
-                    return (edge_x, edge_y);
-                }
-            }
+    // Find the difference between the view rect and these rectangles,
+    // Decomposed into a small *enough* set of rectangles
+    let unblocked = rectangle_minus_rectangles(view_rect, occluding_rectangles);
 
-            // If possible, extend into the x direction
-            for y in start_y..=end_y {
-                *visited.get_mut((x, y)).expect("Out of bounds") = true;
-            }
-            edge_x = x;
-        }
-
-        // Grew maximally in the x direction
-        return (edge_x, edge_y);
-    }
-    // I didn't want to use a match statement, because it indents too much :)
-    else {
-        panic!("Good luck getting here");
+    // Convert unblocked rectangles back to slopes, then make recursive calls at next depth
+    for rect in unblocked {
+        let new_slope_rect = Rect {
+            sx: (depth as f32 - 0.5) / rect.sx,
+            sy: (depth as f32 - 0.5) / rect.sy,
+            ex: (depth as f32 - 0.5) / rect.ex,
+            ey: (depth as f32 - 0.5) / rect.ey,
+        };
+        cast_light(display, &new_slope_rect, depth + 1);
     }
 }
 
-fn is_visited_or_occluded(
-    visited: &Array2<bool>,
-    occluded: &Array3<bool>,
-    x: usize,
-    y: usize,
-    depth: usize,
-) -> bool {
-    // check visited first
-    if *visited.get((x, y)).expect("Out of bounds") {
-        return true;
+#[derive(Debug, Clone, PartialEq)]
+struct Event {
+    x: f32,
+    y_start: f32,
+    y_end: f32,
+    event_type: EventType,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum EventType {
+    Enter, // Left edge of rectangle
+    Exit,  // Right edge of rectangle
+}
+
+impl PartialOrd for Event {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Event {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.x
+            .partial_cmp(&other.x)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| {
+                // Process exits before enters at same x coordinate
+                match (&self.event_type, &other.event_type) {
+                    (EventType::Exit, EventType::Enter) => std::cmp::Ordering::Less,
+                    (EventType::Enter, EventType::Exit) => std::cmp::Ordering::Greater,
+                    _ => std::cmp::Ordering::Equal,
+                }
+            })
+    }
+}
+
+impl Eq for Event {}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+struct Interval {
+    start: f32,
+    end: f32,
+}
+
+impl Interval {
+    fn new(start: f32, end: f32) -> Self {
+        Interval { start, end }
     }
 
-    // TODO: coordinate transformation here
-    // let index_3d = transformed(coords, transformation)
+    fn is_empty(&self) -> bool {
+        self.start >= self.end
+    }
+}
 
-    // skip occluded
-    if *occluded.get((x, y, depth)).expect("Out of bounds") {
-        return true;
+fn subtract_intervals(base: &Interval, to_subtract: &[Interval]) -> Vec<Interval> {
+    let mut result = vec![base.clone()];
+
+    for sub in to_subtract {
+        let mut new_result = Vec::new();
+
+        for interval in result {
+            if interval.end <= sub.start || interval.start >= sub.end {
+                // No overlap
+                new_result.push(interval);
+            } else {
+                // There's overlap, split the interval
+                if interval.start < sub.start {
+                    new_result.push(Interval::new(interval.start, sub.start));
+                }
+                if interval.end > sub.end {
+                    new_result.push(Interval::new(sub.end, interval.end));
+                }
+            }
+        }
+
+        result = new_result;
     }
 
-    false
+    result
+}
+
+fn rectangle_minus_rectangles(rectangle: Rect, rectangles: Vec<Rect>) -> Vec<Rect> {
+    if rectangle.is_empty() {
+        return vec![];
+    }
+
+    // Filter rectangles that actually intersect with the rectangle
+    let relevant_rectangles: Vec<_> = rectangles
+        .into_iter()
+        .filter(|sq| rectangle.intersects(sq))
+        .map(|sq| {
+            Rect::new(
+                sq.sx.max(rectangle.sx),
+                sq.sy.max(rectangle.sy),
+                sq.ex.min(rectangle.ex),
+                sq.ey.min(rectangle.ey),
+            )
+        })
+        .filter(|sq| !sq.is_empty())
+        .collect();
+
+    if relevant_rectangles.is_empty() {
+        return vec![rectangle];
+    }
+
+    // Create events for sweep line
+    let mut events = Vec::new();
+
+    for rectangle in &relevant_rectangles {
+        events.push(Event {
+            x: rectangle.sx,
+            y_start: rectangle.sy,
+            y_end: rectangle.ey,
+            event_type: EventType::Enter,
+        });
+        events.push(Event {
+            x: rectangle.ex,
+            y_start: rectangle.sy,
+            y_end: rectangle.ey,
+            event_type: EventType::Exit,
+        });
+    }
+
+    events.sort();
+
+    let mut result = Vec::new();
+    let mut active_intervals: Vec<Interval> = Vec::new();
+    let mut prev_x = rectangle.sx;
+
+    // Process rectangle from start to first event
+    if !events.is_empty() && events[0].x > rectangle.sx {
+        result.push(Rect::new(
+            rectangle.sx,
+            rectangle.sy,
+            events[0].x,
+            rectangle.ey,
+        ));
+        prev_x = events[0].x;
+    }
+
+    for event in events {
+        let curr_x = event.x;
+
+        // Generate rectangles for the current active region
+        if curr_x > prev_x {
+            let base_interval = Interval::new(rectangle.sy, rectangle.ey);
+            let free_intervals = subtract_intervals(&base_interval, &active_intervals);
+
+            for interval in free_intervals {
+                if !interval.is_empty() {
+                    result.push(Rect::new(prev_x, interval.start, curr_x, interval.end));
+                }
+            }
+        }
+
+        // Update active intervals
+        match event.event_type {
+            EventType::Enter => {
+                active_intervals.push(Interval::new(event.y_start, event.y_end));
+            }
+            EventType::Exit => {
+                active_intervals.retain(|interval| {
+                    !(interval.start == event.y_start && interval.end == event.y_end)
+                });
+            }
+        }
+
+        prev_x = curr_x;
+    }
+
+    // Process rectangle from last event to end
+    if prev_x < rectangle.ex {
+        let base_interval = Interval::new(rectangle.sy, rectangle.ey);
+        let free_intervals = subtract_intervals(&base_interval, &active_intervals);
+
+        for interval in free_intervals {
+            if !interval.is_empty() {
+                result.push(Rect::new(
+                    prev_x,
+                    interval.start,
+                    rectangle.ex,
+                    interval.end,
+                ));
+            }
+        }
+    }
+
+    result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_no_rectangles() {
+        let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
+        let rectangles = vec![];
+        let result = rectangle_minus_rectangles(rect, rectangles);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].sx, 0.0);
+        assert_eq!(result[0].sy, 0.0);
+        assert_eq!(result[0].ex, 10.0);
+        assert_eq!(result[0].ey, 10.0);
+    }
+
+    #[test]
+    fn test_single_rectangle_center() {
+        let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
+        let rectangles = vec![Rect::new(4.0, 4.0, 6.0, 6.0)];
+        let result = rectangle_minus_rectangles(rect, rectangles);
+
+        // Should produce multiple rectangles around the center rectangle
+        assert!(result.len() > 1);
+
+        // Check total area is correct (100 - 4 = 96)
+        let total_area: f32 = result.iter().map(|r| (r.ex - r.sx) * (r.ey - r.sy)).sum();
+        assert!((total_area - 96.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_non_overlapping_rectangle() {
+        let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
+        let rectangles = vec![Rect::new(20.0, 20.0, 25.0, 25.0)];
+        let result = rectangle_minus_rectangles(rect, rectangles);
+
+        // Should return original rectangle
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].sx, 0.0);
+        assert_eq!(result[0].sy, 0.0);
+        assert_eq!(result[0].ex, 10.0);
+        assert_eq!(result[0].ey, 10.0);
+    }
+
+    #[test]
+    fn test_multiple_rectangles() {
+        let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
+        let rectangles = vec![Rect::new(1.0, 1.0, 3.0, 3.0), Rect::new(7.0, 7.0, 9.0, 9.0)];
+        let result = rectangle_minus_rectangles(rect, rectangles);
+
+        // Check total area is correct (100 - 4 - 4 = 92)
+        let total_area: f32 = result.iter().map(|r| (r.ex - r.sx) * (r.ey - r.sy)).sum();
+        assert!((total_area - 92.0).abs() < 0.001);
+    }
 }
