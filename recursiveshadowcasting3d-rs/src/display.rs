@@ -1,6 +1,6 @@
 use std::{cmp::min, f32::INFINITY};
 
-use godot::{classes::Camera3D, obj::WithBaseField, prelude::*};
+use godot::{obj::WithBaseField, prelude::*};
 use itertools::Itertools;
 use ndarray::{Array2, Array3};
 
@@ -19,8 +19,6 @@ pub enum CoordinatePlane3D {
 pub struct Display {
     base: Base<Node3D>,
     #[export]
-    main_camera: OnEditor<Gd<Camera3D>>,
-    #[export]
     debug_line_scene: OnEditor<Gd<PackedScene>>,
     pub occluded: Array3<bool>,
 }
@@ -30,7 +28,6 @@ impl INode3D for Display {
     fn init(base: Base<Node3D>) -> Self {
         Self {
             base,
-            main_camera: OnEditor::default(),
             debug_line_scene: OnEditor::default(),
             occluded: Array3::from_elem((100, 100, 100), false),
         }
@@ -220,15 +217,20 @@ fn cast_light(
             }
 
             // Bounded by obstruction: less permissive
-            // Bounded by end of rect: more permissive
-            let mut new_ex = (depth as f32 + 0.5) / (rect_end_x as f32 + 0.5);
-            if rect_end_x == e_ix {
-                new_ex = (depth as f32 - 0.5) / (rect_end_x as f32 - 0.5);
+            // Bounded by end of rect: keep old
+            let mut new_ex = slope_rect.ex;
+            if rect_end_x != e_ix {
+                new_ex = (depth as f32 + 0.5) / (rect_end_x as f32 + 0.5);
             }
 
-            let mut new_ey = (depth as f32 + 0.5) / (rect_end_y as f32 + 0.5);
-            if rect_end_y == e_iy {
-                new_ey = (depth as f32 - 0.5) / (rect_end_y as f32 - 0.5);
+            let mut new_ey = slope_rect.ey;
+            if rect_end_y != e_iy {
+                new_ey = (depth as f32 + 0.5) / (rect_end_y as f32 + 0.5);
+            }
+
+            // Edge case: skip zero or negative area slope rectangles
+            if new_sx <= new_ex || new_sy <= new_ey {
+                continue;
             }
 
             let new_sx_at_depth = (depth as f32 + 0.5) / new_sx;

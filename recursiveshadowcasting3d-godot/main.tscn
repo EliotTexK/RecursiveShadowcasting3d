@@ -30,8 +30,7 @@ rings = 1
 
 [node name="Main" type="Node3D"]
 
-[node name="Display" type="Display" parent="." node_paths=PackedStringArray("main_camera")]
-main_camera = NodePath("../MainCamera")
+[node name="Display" type="Display" parent="."]
 debug_line_scene = ExtResource("1_ig7tw")
 
 [node name="Cube" type="MeshInstance3D" parent="Display"]
@@ -120,11 +119,6 @@ script = ExtResource("2_h2yge")
 
 [node name="Cube15" type="MeshInstance3D" parent="Display"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 2)
-mesh = SubResource("BoxMesh_0xm2m")
-script = ExtResource("2_h2yge")
-
-[node name="Cube17" type="MeshInstance3D" parent="Display"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 1)
 mesh = SubResource("BoxMesh_0xm2m")
 script = ExtResource("2_h2yge")
 
