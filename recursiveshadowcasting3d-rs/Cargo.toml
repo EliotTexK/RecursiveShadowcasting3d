@@ -8,7 +8,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 godot = "0.3.2"
-itertools = "0.14.0"
 ndarray = "0.16.1"
 
 [profile.dev]

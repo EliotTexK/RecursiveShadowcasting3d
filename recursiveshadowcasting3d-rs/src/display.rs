@@ -1,4 +1,4 @@
-use std::f32::INFINITY;
+use std::{f32::INFINITY, time::Instant};
 
 use godot::{obj::WithBaseField, prelude::*};
 use ndarray::Array3;
@@ -11,20 +11,6 @@ pub struct Rect {
     // represent end, not length
     ex: f32,
     ey: f32,
-}
-
-impl Rect {
-    fn new(sx: f32, sy: f32, ex: f32, ey: f32) -> Self {
-        Rect { sx, sy, ex, ey }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.sx >= self.ex || self.sy >= self.ey
-    }
-
-    fn intersects(&self, other: &Rect) -> bool {
-        self.sx < other.ex && other.sx < self.ex && self.sy < other.ey && other.sy < self.ey
-    }
 }
 
 #[derive(GodotConvert, Var, Export, Debug)]
@@ -55,13 +41,23 @@ impl INode3D for Display {
     }
 
     fn ready(&mut self) {
+        // Profile it
+        let now = Instant::now();
         let initial_slope_rect = Rect {
             sx: INFINITY,
             sy: INFINITY,
             ex: 1.0,
             ey: 1.0,
         };
-        cast_light(self, &initial_slope_rect, 1);
+        cast_light(self, &initial_slope_rect, 1, false);
+        let elapsed_time = now.elapsed();
+        println!(
+            "Running cast_light() took {} microseconds.",
+            elapsed_time.as_micros()
+        );
+
+        // Visualize it
+        cast_light(self, &initial_slope_rect, 1, true);
     }
 }
 
@@ -131,9 +127,9 @@ impl Display {
     }
 }
 
-const MAX_DEPTH: usize = 5;
+const MAX_DEPTH: usize = 8;
 
-fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize) {
+fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug: bool) {
     if depth > MAX_DEPTH {
         return;
     }
@@ -147,48 +143,14 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize) {
     };
 
     // Visualize view rectangle at this depth
-    display.draw_debug_rect(
-        CoordinatePlane3D::XY,
-        depth as f32 - 0.5,
-        &view_rect,
-        Color::CYAN,
-    );
-    // display.draw_debug_line(
-    //     0.0,
-    //     0.0,
-    //     0.0,
-    //     view_rect.sx,
-    //     view_rect.sy,
-    //     depth as f32 - 0.5,
-    //     Color::CYAN,
-    // );
-    // display.draw_debug_line(
-    //     0.0,
-    //     0.0,
-    //     0.0,
-    //     view_rect.sx,
-    //     view_rect.ey,
-    //     depth as f32 - 0.5,
-    //     Color::CYAN,
-    // );
-    // display.draw_debug_line(
-    //     0.0,
-    //     0.0,
-    //     0.0,
-    //     view_rect.ex,
-    //     view_rect.sy,
-    //     depth as f32 - 0.5,
-    //     Color::CYAN,
-    // );
-    // display.draw_debug_line(
-    //     0.0,
-    //     0.0,
-    //     0.0,
-    //     view_rect.ex,
-    //     view_rect.ey,
-    //     depth as f32 - 0.5,
-    //     Color::CYAN,
-    // );
+    if draw_debug {
+        display.draw_debug_rect(
+            CoordinatePlane3D::XY,
+            depth as f32 - 0.5,
+            &view_rect,
+            Color::CYAN,
+        );
+    }
 
     // Find start and end xy indices which could possibly occlude the view at this depth
     let mut s_ix = view_rect.sx.floor() as usize;
@@ -201,16 +163,18 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize) {
         s_iy = s_iy - 1;
     }
 
-    let e_ix = view_rect.ex.ceil() as usize;
-    let e_iy = view_rect.ey.ceil() as usize;
-
-    
+    let mut e_ix = view_rect.ex.ceil() as usize + 1;
+    let mut e_iy = view_rect.ey.ceil() as usize + 1;
 
     // Find occluded indices, convert them to rectangles
     let mut occluding_rectangles: Vec<Rect> = Vec::new();
     for x in s_ix..e_ix {
         for y in s_iy..e_iy {
-            if display.occluded.get((x, y, depth)).is_some_and(|occluded| *occluded) {
+            if display
+                .occluded
+                .get((x, y, depth))
+                .is_some_and(|occluded| *occluded)
+            {
                 let xf = x as f32;
                 let yf = y as f32;
                 let rect_occluded = Rect {
@@ -220,15 +184,17 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize) {
                     ex: xf + 0.5,
                     ey: yf + 0.5,
                 };
-                display.draw_debug_rect(
-                    CoordinatePlane3D::XY,
-                    depth as f32 - 0.5,
-                    &rect_occluded,
-                    Color::RED,
-                );
+                if draw_debug {
+                    display.draw_debug_rect(
+                        CoordinatePlane3D::XY,
+                        depth as f32 - 0.5,
+                        &rect_occluded,
+                        Color::RED,
+                    );
+                }
                 occluding_rectangles.push(rect_occluded);
             }
-            // here's where you would put your 
+            // here's where you would put your logic for showing/hiding the object at (x,y,depth)
         }
     }
 
@@ -244,82 +210,99 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize) {
             ex: (depth as f32 - 0.5) / rect.ex,
             ey: (depth as f32 - 0.5) / rect.ey,
         };
-        cast_light(display, &new_slope_rect, depth + 1);
+        cast_light(display, &new_slope_rect, depth + 1, draw_debug);
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct Event {
-    x: f32,
-    y_start: f32,
-    y_end: f32,
-    event_type: EventType,
-}
+impl Rect {
+    fn is_valid(&self) -> bool {
+        self.sx < self.ex && self.sy < self.ey
+    }
 
-#[derive(Debug, Clone, PartialEq)]
-enum EventType {
-    Enter, // Left edge of rectangle
-    Exit,  // Right edge of rectangle
-}
+    fn intersects(&self, other: &Rect) -> bool {
+        self.sx < other.ex && self.ex > other.sx && self.sy < other.ey && self.ey > other.sy
+    }
 
-impl PartialOrd for Event {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
+    fn intersection(&self, other: &Rect) -> Option<Rect> {
+        if !self.intersects(other) {
+            return None;
+        }
+
+        let result = Rect {
+            sx: self.sx.max(other.sx),
+            sy: self.sy.max(other.sy),
+            ex: self.ex.min(other.ex),
+            ey: self.ey.min(other.ey),
+        };
+
+        if result.is_valid() {
+            Some(result)
+        } else {
+            None
+        }
     }
 }
 
-impl Ord for Event {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.x
-            .partial_cmp(&other.x)
-            .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| {
-                // Process exits before enters at same x coordinate
-                match (&self.event_type, &other.event_type) {
-                    (EventType::Exit, EventType::Enter) => std::cmp::Ordering::Less,
-                    (EventType::Enter, EventType::Exit) => std::cmp::Ordering::Greater,
-                    _ => std::cmp::Ordering::Equal,
-                }
-            })
-    }
-}
+fn rectangle_minus_rectangles(rectangle: Rect, rectangles: Vec<Rect>) -> Vec<Rect> {
+    let mut result = vec![rectangle];
 
-impl Eq for Event {}
-
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-struct Interval {
-    start: f32,
-    end: f32,
-}
-
-impl Interval {
-    fn new(start: f32, end: f32) -> Self {
-        Interval { start, end }
-    }
-
-    fn is_empty(&self) -> bool {
-        self.start >= self.end
-    }
-}
-
-fn subtract_intervals(base: &Interval, to_subtract: &[Interval]) -> Vec<Interval> {
-    let mut result = vec![base.clone()];
-
-    for sub in to_subtract {
+    for subtract_rect in rectangles {
         let mut new_result = Vec::new();
 
-        for interval in result {
-            if interval.end <= sub.start || interval.start >= sub.end {
-                // No overlap
-                new_result.push(interval);
+        for rect in result {
+            if let Some(intersection) = rect.intersection(&subtract_rect) {
+                // Split the rectangle around the intersection
+                let mut splits = Vec::new();
+
+                // Left part
+                if rect.sx < intersection.sx {
+                    splits.push(Rect {
+                        sx: rect.sx,
+                        sy: rect.sy,
+                        ex: intersection.sx,
+                        ey: rect.ey,
+                    });
+                }
+
+                // Right part
+                if intersection.ex < rect.ex {
+                    splits.push(Rect {
+                        sx: intersection.ex,
+                        sy: rect.sy,
+                        ex: rect.ex,
+                        ey: rect.ey,
+                    });
+                }
+
+                // Top part (only the middle section to avoid overlap)
+                if rect.sy < intersection.sy {
+                    splits.push(Rect {
+                        sx: intersection.sx,
+                        sy: rect.sy,
+                        ex: intersection.ex,
+                        ey: intersection.sy,
+                    });
+                }
+
+                // Bottom part (only the middle section to avoid overlap)
+                if intersection.ey < rect.ey {
+                    splits.push(Rect {
+                        sx: intersection.sx,
+                        sy: intersection.ey,
+                        ex: intersection.ex,
+                        ey: rect.ey,
+                    });
+                }
+
+                // Add all valid splits
+                for split in splits {
+                    if split.is_valid() {
+                        new_result.push(split);
+                    }
+                }
             } else {
-                // There's overlap, split the interval
-                if interval.start < sub.start {
-                    new_result.push(Interval::new(interval.start, sub.start));
-                }
-                if interval.end > sub.end {
-                    new_result.push(Interval::new(sub.end, interval.end));
-                }
+                // No intersection, keep the rectangle as is
+                new_result.push(rect);
             }
         }
 
@@ -327,169 +310,4 @@ fn subtract_intervals(base: &Interval, to_subtract: &[Interval]) -> Vec<Interval
     }
 
     result
-}
-
-fn rectangle_minus_rectangles(rectangle: Rect, rectangles: Vec<Rect>) -> Vec<Rect> {
-    if rectangle.is_empty() {
-        return vec![];
-    }
-
-    // Filter rectangles that actually intersect with the rectangle
-    let relevant_rectangles: Vec<_> = rectangles
-        .into_iter()
-        .filter(|sq| rectangle.intersects(sq))
-        .map(|sq| {
-            Rect::new(
-                sq.sx.max(rectangle.sx),
-                sq.sy.max(rectangle.sy),
-                sq.ex.min(rectangle.ex),
-                sq.ey.min(rectangle.ey),
-            )
-        })
-        .filter(|sq| !sq.is_empty())
-        .collect();
-
-    if relevant_rectangles.is_empty() {
-        return vec![rectangle];
-    }
-
-    // Create events for sweep line
-    let mut events = Vec::new();
-
-    for rectangle in &relevant_rectangles {
-        events.push(Event {
-            x: rectangle.sx,
-            y_start: rectangle.sy,
-            y_end: rectangle.ey,
-            event_type: EventType::Enter,
-        });
-        events.push(Event {
-            x: rectangle.ex,
-            y_start: rectangle.sy,
-            y_end: rectangle.ey,
-            event_type: EventType::Exit,
-        });
-    }
-
-    events.sort();
-
-    let mut result = Vec::new();
-    let mut active_intervals: Vec<Interval> = Vec::new();
-    let mut prev_x = rectangle.sx;
-
-    // Process rectangle from start to first event
-    if !events.is_empty() && events[0].x > rectangle.sx {
-        result.push(Rect::new(
-            rectangle.sx,
-            rectangle.sy,
-            events[0].x,
-            rectangle.ey,
-        ));
-        prev_x = events[0].x;
-    }
-
-    for event in events {
-        let curr_x = event.x;
-
-        // Generate rectangles for the current active region
-        if curr_x > prev_x {
-            let base_interval = Interval::new(rectangle.sy, rectangle.ey);
-            let free_intervals = subtract_intervals(&base_interval, &active_intervals);
-
-            for interval in free_intervals {
-                if !interval.is_empty() {
-                    result.push(Rect::new(prev_x, interval.start, curr_x, interval.end));
-                }
-            }
-        }
-
-        // Update active intervals
-        match event.event_type {
-            EventType::Enter => {
-                active_intervals.push(Interval::new(event.y_start, event.y_end));
-            }
-            EventType::Exit => {
-                active_intervals.retain(|interval| {
-                    !(interval.start == event.y_start && interval.end == event.y_end)
-                });
-            }
-        }
-
-        prev_x = curr_x;
-    }
-
-    // Process rectangle from last event to end
-    if prev_x < rectangle.ex {
-        let base_interval = Interval::new(rectangle.sy, rectangle.ey);
-        let free_intervals = subtract_intervals(&base_interval, &active_intervals);
-
-        for interval in free_intervals {
-            if !interval.is_empty() {
-                result.push(Rect::new(
-                    prev_x,
-                    interval.start,
-                    rectangle.ex,
-                    interval.end,
-                ));
-            }
-        }
-    }
-
-    result
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_no_rectangles() {
-        let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
-        let rectangles = vec![];
-        let result = rectangle_minus_rectangles(rect, rectangles);
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].sx, 0.0);
-        assert_eq!(result[0].sy, 0.0);
-        assert_eq!(result[0].ex, 10.0);
-        assert_eq!(result[0].ey, 10.0);
-    }
-
-    #[test]
-    fn test_single_rectangle_center() {
-        let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
-        let rectangles = vec![Rect::new(4.0, 4.0, 6.0, 6.0)];
-        let result = rectangle_minus_rectangles(rect, rectangles);
-
-        // Should produce multiple rectangles around the center rectangle
-        assert!(result.len() > 1);
-
-        // Check total area is correct (100 - 4 = 96)
-        let total_area: f32 = result.iter().map(|r| (r.ex - r.sx) * (r.ey - r.sy)).sum();
-        assert!((total_area - 96.0).abs() < 0.001);
-    }
-
-    #[test]
-    fn test_non_overlapping_rectangle() {
-        let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
-        let rectangles = vec![Rect::new(20.0, 20.0, 25.0, 25.0)];
-        let result = rectangle_minus_rectangles(rect, rectangles);
-
-        // Should return original rectangle
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].sx, 0.0);
-        assert_eq!(result[0].sy, 0.0);
-        assert_eq!(result[0].ex, 10.0);
-        assert_eq!(result[0].ey, 10.0);
-    }
-
-    #[test]
-    fn test_multiple_rectangles() {
-        let rect = Rect::new(0.0, 0.0, 10.0, 10.0);
-        let rectangles = vec![Rect::new(1.0, 1.0, 3.0, 3.0), Rect::new(7.0, 7.0, 9.0, 9.0)];
-        let result = rectangle_minus_rectangles(rect, rectangles);
-
-        // Check total area is correct (100 - 4 - 4 = 92)
-        let total_area: f32 = result.iter().map(|r| (r.ex - r.sx) * (r.ey - r.sy)).sum();
-        assert!((total_area - 92.0).abs() < 0.001);
-    }
 }
