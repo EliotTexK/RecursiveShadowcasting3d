@@ -27,7 +27,9 @@ pub struct Display {
     base: Base<Node3D>,
     #[export]
     debug_line_scene: OnEditor<Gd<PackedScene>>,
-    pub occluded: Array3<bool>,
+    occluded: Array3<bool>,
+    origin: [usize; 3],
+    origin_f32: [f32; 3],
 }
 
 #[godot_api]
@@ -37,27 +39,9 @@ impl INode3D for Display {
             base,
             debug_line_scene: OnEditor::default(),
             occluded: Array3::from_elem((100, 100, 100), false),
+            origin: [0; 3],
+            origin_f32: [0.0; 3],
         }
-    }
-
-    fn ready(&mut self) {
-        // Profile it
-        let now = Instant::now();
-        let initial_slope_rect = Rect {
-            sx: INFINITY,
-            sy: INFINITY,
-            ex: 1.0,
-            ey: 1.0,
-        };
-        cast_light(self, &initial_slope_rect, 1, false);
-        let elapsed_time = now.elapsed();
-        println!(
-            "Running cast_light() took {} microseconds.",
-            elapsed_time.as_micros()
-        );
-
-        // Visualize it
-        cast_light(self, &initial_slope_rect, 1, true);
     }
 }
 
@@ -84,7 +68,9 @@ impl Display {
             z: ez,
         };
         let line = DebugLine3D::new(start, end, &self.debug_line_scene, color);
-        self.base_mut().add_child(&line);
+        self.base_mut()
+            .call_deferred("add_child", &[line.to_variant()]);
+        // self.base_mut().add_child(&line);
     }
 
     pub fn draw_debug_rect(
@@ -125,31 +111,60 @@ impl Display {
             godot_script_error!("Out of bounds at position {}", pos)
         }
     }
+
+    #[func]
+    pub fn set_origin_and_recompute(&mut self, origin: Vector3) {
+        // Set origin
+        self.origin = [origin.x as usize, origin.y as usize, origin.z as usize];
+        self.origin_f32 = [origin.x, origin.y, origin.z];
+
+        // Profile shadowcasting
+        let now = Instant::now();
+        let initial_slope_rect = Rect {
+            sx: INFINITY,
+            sy: INFINITY,
+            ex: 1.0,
+            ey: 1.0,
+        };
+        cast_light(self, &initial_slope_rect, 1, false);
+        let elapsed_time = now.elapsed();
+        println!(
+            "Running cast_light() took {} microseconds.",
+            elapsed_time.as_micros()
+        );
+
+        // Visualize shadowcasting
+        cast_light(self, &initial_slope_rect, 1, true);
+    }
 }
 
-const MAX_DEPTH: usize = 8;
+const MAX_DEPTH: usize = 15;
 
 fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug: bool) {
     if depth > MAX_DEPTH {
         return;
     }
 
+    let x_off = display.origin[0];
+    let y_off = display.origin[1];
+    let z_off = display.origin[2];
+    
+    let x_off_32 = x_off as f32;
+    let y_off_32 = y_off as f32;
+    let z_off_32 = display.origin_f32[2];
+    let depth_32 = depth as f32;
+    
     // Calculate start and end slopes of the visible rectangle at this depth
     let view_rect = Rect {
-        sx: (depth as f32 - 0.5) / slope_rect.sx,
-        sy: (depth as f32 - 0.5) / slope_rect.sy,
-        ex: (depth as f32 - 0.5) / slope_rect.ex,
-        ey: (depth as f32 - 0.5) / slope_rect.ey,
+        sx: ((depth_32 - 0.5) / slope_rect.sx) + x_off_32,
+        sy: ((depth_32 - 0.5) / slope_rect.sy) + y_off_32,
+        ex: ((depth_32 - 0.5) / slope_rect.ex) + x_off_32,
+        ey: ((depth_32 - 0.5) / slope_rect.ey) + y_off_32,
     };
 
     // Visualize view rectangle at this depth
     if draw_debug {
-        display.draw_debug_rect(
-            CoordinatePlane3D::XY,
-            depth as f32 - 0.5,
-            &view_rect,
-            Color::CYAN,
-        );
+        display.draw_debug_rect(CoordinatePlane3D::XY, depth_32 + z_off_32 - 0.5, &view_rect, Color::CYAN);
     }
 
     // Find start and end xy indices which could possibly occlude the view at this depth
@@ -163,8 +178,8 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug
         s_iy = s_iy - 1;
     }
 
-    let mut e_ix = view_rect.ex.ceil() as usize + 1;
-    let mut e_iy = view_rect.ey.ceil() as usize + 1;
+    let e_ix = view_rect.ex.ceil() as usize + 1;
+    let e_iy = view_rect.ey.ceil() as usize + 1;
 
     // Find occluded indices, convert them to rectangles
     let mut occluding_rectangles: Vec<Rect> = Vec::new();
@@ -172,22 +187,21 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug
         for y in s_iy..e_iy {
             if display
                 .occluded
-                .get((x, y, depth))
+                .get((x, y, depth + z_off))
                 .is_some_and(|occluded| *occluded)
             {
                 let xf = x as f32;
                 let yf = y as f32;
                 let rect_occluded = Rect {
-                    // TODO: sx and sy need to be smaller
-                    sx: xf - 0.5 - ((xf - 0.5) / (depth as f32 + 0.5)),
-                    sy: yf - 0.5 - ((yf - 0.5) / (depth as f32 + 0.5)),
+                    sx: xf - 0.5 - ((xf - 0.5) / (depth_32 + z_off_32 + 0.5)),
+                    sy: yf - 0.5 - ((yf - 0.5) / (depth_32 + z_off_32 + 0.5)),
                     ex: xf + 0.5,
                     ey: yf + 0.5,
                 };
                 if draw_debug {
                     display.draw_debug_rect(
                         CoordinatePlane3D::XY,
-                        depth as f32 - 0.5,
+                        depth_32 + z_off_32 - 0.5,
                         &rect_occluded,
                         Color::RED,
                     );
@@ -205,10 +219,10 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug
     // Convert unblocked rectangles back to slopes, then make recursive calls at next depth
     for rect in unblocked {
         let new_slope_rect = Rect {
-            sx: (depth as f32 - 0.5) / rect.sx,
-            sy: (depth as f32 - 0.5) / rect.sy,
-            ex: (depth as f32 - 0.5) / rect.ex,
-            ey: (depth as f32 - 0.5) / rect.ey,
+            sx: (depth_32 - 0.5) / (rect.sx - x_off_32),
+            sy: (depth_32 - 0.5) / (rect.sy - y_off_32),
+            ex: (depth_32 - 0.5) / (rect.ex - x_off_32),
+            ey: (depth_32 - 0.5) / (rect.ey - y_off_32),
         };
         cast_light(display, &new_slope_rect, depth + 1, draw_debug);
     }
