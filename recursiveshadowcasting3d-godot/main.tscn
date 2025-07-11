@@ -169,6 +169,138 @@ mesh = SubResource("BoxMesh_0xm2m")
 skeleton = NodePath("../..")
 script = ExtResource("2_h2yge")
 
+[node name="Cube27" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 65, 43, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube28" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 66, 43, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube29" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 67, 43, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube30" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 43, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube31" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 68, 44, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube32" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 67, 44, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube33" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 43, 57)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube34" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 65, 43, 57)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube35" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 42, 56)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube36" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 64, 39, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube37" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 58, 39, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube38" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 57, 39, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube39" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 57, 38, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube40" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 61, 43, 56)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube41" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 60, 43, 56)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube42" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 59, 42, 57)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube43" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 59, 42, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube44" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 58, 42, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube45" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 58, 43, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube46" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 56, 43, 60)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube47" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 63, 43, 57)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
+[node name="Cube48" type="MeshInstance3D" parent="Display"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 67, 44, 59)
+mesh = SubResource("BoxMesh_0xm2m")
+skeleton = NodePath("../..")
+script = ExtResource("2_h2yge")
+
 [node name="Origin" type="MeshInstance3D" parent="Display"]
 transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 63, 42, 66)
 mesh = SubResource("SphereMesh_1bvp3")

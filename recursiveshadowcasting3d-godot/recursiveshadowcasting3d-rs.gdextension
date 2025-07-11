@@ -16,6 +16,5 @@ web.debug.wasm32 =       "res://../recursiveshadowcasting3d-rs/target/wasm32-unk
 web.release.wasm32 =     "res://../recursiveshadowcasting3d-rs/target/wasm32-unknown-emscripten/release/recursiveshadowcasting3d_rs.wasm"
 
 [icons]
-
 Display      = "res://addons/recursiveshadowcasting3d_rs/Node3DOxidized.svg"
 ShadowCaster = "res://addons/recursiveshadowcasting3d_rs/Node3DOxidized.svg"

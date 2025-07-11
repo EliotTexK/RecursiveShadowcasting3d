@@ -1,18 +1,9 @@
-use std::{f32::INFINITY, time::Instant};
+use std::{f32::INFINITY, ops::{Add, Sub}, time::Instant};
 
 use godot::{obj::WithBaseField, prelude::*};
 use ndarray::Array3;
 
 use crate::debug_line_3d::DebugLine3D;
-
-enum Axis3D {
-    PX,
-    NX,
-    PY,
-    NY,
-    PZ,
-    NZ,
-}
 
 struct Rect {
     sx: f32,
@@ -22,6 +13,61 @@ struct Rect {
     ey: f32,
 }
 
+impl Rect {
+    fn is_valid(&self) -> bool {
+        self.sx < self.ex && self.sy < self.ey
+    }
+
+    fn intersects(&self, other: &Rect) -> bool {
+        self.sx < other.ex && self.ex > other.sx && self.sy < other.ey && self.ey > other.sy
+    }
+
+    fn intersection(&self, other: &Rect) -> Option<Rect> {
+        if !self.intersects(other) {
+            return None;
+        }
+
+        let result = Rect {
+            sx: self.sx.max(other.sx),
+            sy: self.sy.max(other.sy),
+            ex: self.ex.min(other.ex),
+            ey: self.ey.min(other.ey),
+        };
+
+        if result.is_valid() {
+            Some(result)
+        } else {
+            None
+        }
+    }
+}
+
+impl Add for Rect {
+    type Output = Rect;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Rect {
+            sx: self.sx + rhs.sx,
+            sy: self.sy + rhs.sy,
+            ex: self.ex + rhs.ex,
+            ey: self.ey + rhs.ey,
+        }
+    }
+}
+
+impl Sub for Rect {
+    type Output = Rect;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Rect {
+            sx: self.sx - rhs.sx,
+            sy: self.sy - rhs.sy,
+            ex: self.ex - rhs.ex,
+            ey: self.ey - rhs.ey,
+        }
+    }
+}
+
 #[derive(GodotClass)]
 #[class(base=Node3D)]
 pub struct Display {
@@ -29,8 +75,8 @@ pub struct Display {
     #[export]
     debug_line_scene: OnEditor<Gd<PackedScene>>,
     occluded: Array3<bool>,
-    origin: [usize; 3],
-    origin_f32: [f32; 3],
+    origin: Vector3i,
+    origin_float: Vector3,
 }
 
 #[godot_api]
@@ -40,8 +86,8 @@ impl INode3D for Display {
             base,
             debug_line_scene: OnEditor::default(),
             occluded: Array3::from_elem((100, 100, 100), false),
-            origin: [0; 3],
-            origin_f32: [0.0; 3],
+            origin: Vector3i::ZERO,
+            origin_float: Vector3::ZERO,
         }
     }
 }
@@ -95,8 +141,8 @@ impl Display {
     #[func]
     pub fn set_origin_and_recompute(&mut self, origin: Vector3) {
         // Set origin
-        self.origin = [origin.x as usize, origin.y as usize, origin.z as usize];
-        self.origin_f32 = [origin.x, origin.y, origin.z];
+        self.origin = origin.cast_int();
+        self.origin_float = origin;
 
         for initial_slope_rect in [
             Rect {
@@ -124,49 +170,58 @@ impl Display {
                 ey: INFINITY,
             },
         ] {
-            // Profile shadowcasting
-            let now = Instant::now();
-            cast_light(self, &initial_slope_rect, 1, false);
-            let elapsed_time = now.elapsed();
-            println!(
-                "Running cast_light() took {} microseconds.",
-                elapsed_time.as_micros()
-            );
+            for reverse_z in [false,true] {
+                // Profile shadowcasting
+                let now = Instant::now();
+                cast_light(self, &initial_slope_rect, 1, false, reverse_z);
+                let elapsed_time = now.elapsed();
+                println!(
+                    "Running cast_light() took {} microseconds.",
+                    elapsed_time.as_micros()
+                );
 
-            // Visualize shadowcasting
-            cast_light(self, &initial_slope_rect, 1, true);
+                // Visualize shadowcasting
+                cast_light(self, &initial_slope_rect, 1, true, reverse_z);
+            }
         }
     }
 }
 
 const MAX_DEPTH: usize = 15;
 
-fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug: bool) {
+fn cast_light(
+    display: &mut Display,
+    slope_rect: &Rect,
+    depth: usize,
+    draw_debug: bool,
+    reverse_z: bool,
+) {
     if depth > MAX_DEPTH {
         return;
     }
 
-    // Calculate offsets
-    let x_off = display.origin[0];
-    let y_off = display.origin[1];
-    let z_off = display.origin[2];
-
-    let x_off_32 = x_off as f32;
-    let y_off_32 = y_off as f32;
-    let z_off_32 = display.origin_f32[2];
-    let depth_32 = depth as f32;
+    let z = match reverse_z {
+        true => -(depth as i32),
+        false => depth as i32,
+    };
+    let z_f32 = z as f32;
 
     // Calculate the rectangle encompassing the view at this depth, given our slopes and offset (view rect)
+    let z_half_offset = match reverse_z {
+        true => 0.5,
+        false => -0.5,
+    };
+
     let view_rect = Rect {
-        sx: ((depth_32 - 0.5) / slope_rect.sx) + x_off_32,
-        sy: ((depth_32 - 0.5) / slope_rect.sy) + y_off_32,
-        ex: ((depth_32 - 0.5) / slope_rect.ex) + x_off_32,
-        ey: ((depth_32 - 0.5) / slope_rect.ey) + y_off_32,
+        sx: ((z_f32 + z_half_offset) / slope_rect.sx) + display.origin_float.x,
+        sy: ((z_f32 + z_half_offset) / slope_rect.sy) + display.origin_float.y,
+        ex: ((z_f32 + z_half_offset) / slope_rect.ex) + display.origin_float.x,
+        ey: ((z_f32 + z_half_offset) / slope_rect.ey) + display.origin_float.y,
     };
 
     // Visualize view rectangle
     if draw_debug {
-        display.draw_debug_rect_xy(depth_32 + z_off_32 - 0.5, &view_rect, Color::CYAN);
+        display.draw_debug_rect_xy(z_f32 + display.origin_float.z + z_half_offset, &view_rect, Color::CYAN);
     }
 
     // Find start and end xy indices which could possibly occlude the view
@@ -189,7 +244,7 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug
         for y in s_iy..e_iy {
             if display
                 .occluded
-                .get((x, y, depth + z_off))
+                .get((x, y, (z + display.origin.z) as usize))
                 .is_some_and(|occluded| *occluded)
             {
                 let xf = x as f32;
@@ -198,22 +253,22 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug
                 // Grow rectangles to accomodate occlusion by the back sides of objects (treating them as cubes)
                 let mut grow_sx = 0.0;
                 if slope_rect.ex > 0.0 && slope_rect.ex.is_finite() {
-                    grow_sx = (xf - 0.5 - x_off_32) / (depth_32 + 0.5);
+                    grow_sx = (xf - 0.5 - display.origin_float.x) / (z_f32 + 0.5);
                 }
 
                 let mut grow_sy = 0.0;
                 if slope_rect.ey > 0.0 && slope_rect.ey.is_finite() {
-                    grow_sy = (yf - 0.5 - y_off_32) / (depth_32 + 0.5);
+                    grow_sy = (yf - 0.5 - display.origin_float.y) / (z_f32 + 0.5);
                 }
 
                 let mut grow_ex = 0.0;
                 if slope_rect.sx < 0.0 && slope_rect.sx.is_finite() {
-                    grow_ex = (xf + 0.5 - x_off_32) / (depth_32 + 0.5);
+                    grow_ex = (xf + 0.5 - display.origin_float.x) / (z_f32 + 0.5);
                 }
 
                 let mut grow_ey = 0.0;
                 if slope_rect.sy < 0.0 && slope_rect.sy.is_finite() {
-                    grow_ey = (yf + 0.5 - y_off_32) / (depth_32 + 0.5);
+                    grow_ey = (yf + 0.5 - display.origin_float.y) / (z_f32 + 0.5);
                 }
 
                 let rect_occluded = Rect {
@@ -225,7 +280,7 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug
 
                 if draw_debug {
                     display.draw_debug_rect_xy(
-                        depth_32 + z_off_32 - 0.5,
+                        z_f32 + display.origin_float.z + z_half_offset,
                         &rect_occluded,
                         Color::RED,
                     );
@@ -244,45 +299,16 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug
     // Convert unblocked rectangles back to slopes, then make recursive calls at next depth
     for rect in unblocked {
         let new_slope_rect = Rect {
-            sx: (depth_32 - 0.5) / (rect.sx - x_off_32),
-            sy: (depth_32 - 0.5) / (rect.sy - y_off_32),
-            ex: (depth_32 - 0.5) / (rect.ex - x_off_32),
-            ey: (depth_32 - 0.5) / (rect.ey - y_off_32),
+            sx: (z_f32 + z_half_offset) / (rect.sx - display.origin_float.x),
+            sy: (z_f32 + z_half_offset) / (rect.sy - display.origin_float.y),
+            ex: (z_f32 + z_half_offset) / (rect.ex - display.origin_float.x),
+            ey: (z_f32 + z_half_offset) / (rect.ey - display.origin_float.y),
         };
-        cast_light(display, &new_slope_rect, depth + 1, draw_debug);
+        cast_light(display, &new_slope_rect, depth + 1, draw_debug, reverse_z);
     }
 }
 
-impl Rect {
-    fn is_valid(&self) -> bool {
-        self.sx < self.ex && self.sy < self.ey
-    }
-
-    fn intersects(&self, other: &Rect) -> bool {
-        self.sx < other.ex && self.ex > other.sx && self.sy < other.ey && self.ey > other.sy
-    }
-
-    fn intersection(&self, other: &Rect) -> Option<Rect> {
-        if !self.intersects(other) {
-            return None;
-        }
-
-        let result = Rect {
-            sx: self.sx.max(other.sx),
-            sy: self.sy.max(other.sy),
-            ex: self.ex.min(other.ex),
-            ey: self.ey.min(other.ey),
-        };
-
-        if result.is_valid() {
-            Some(result)
-        } else {
-            None
-        }
-    }
-}
-
-// Boolean difference: remove all rectangles from rectangle
+/// Boolean difference: remove all rectangles from rectangle
 fn rectangle_minus_rectangles(rectangle: Rect, rectangles: Vec<Rect>) -> Vec<Rect> {
     let mut result = vec![rectangle];
 

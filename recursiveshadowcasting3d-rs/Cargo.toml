@@ -7,7 +7,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-godot = "0.3.2"
+godot = { version = "0.3.2", features = ["experimental-wasm", "lazy-function-tables"]}
 ndarray = "0.16.1"
 
 [profile.dev]
@@ -16,3 +16,7 @@ debug = true
 [profile.release]
 lto = true
 opt-level = "s" # optimize for size
+
+[build]
+# don't mangle names too much - or else emscripten gets confused
+rustflags = ["-C", "symbol-mangling-version=v0"]
