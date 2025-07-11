@@ -5,20 +5,21 @@ use ndarray::Array3;
 
 use crate::debug_line_3d::DebugLine3D;
 
-pub struct Rect {
+enum Axis3D {
+    PX,
+    NX,
+    PY,
+    NY,
+    PZ,
+    NZ,
+}
+
+struct Rect {
     sx: f32,
     sy: f32,
     // represent end, not length
     ex: f32,
     ey: f32,
-}
-
-#[derive(GodotConvert, Var, Export, Debug)]
-#[godot(via = GString)]
-pub enum CoordinatePlane3D {
-    XY,
-    YZ,
-    XZ,
 }
 
 #[derive(GodotClass)]
@@ -73,33 +74,12 @@ impl Display {
         // self.base_mut().add_child(&line);
     }
 
-    pub fn draw_debug_rect(
-        &mut self,
-        plane: CoordinatePlane3D,
-        depth: f32,
-        rect: &Rect,
-        color: Color,
-    ) {
-        match plane {
-            CoordinatePlane3D::XY => {
-                self.draw_debug_line(rect.sx, rect.sy, depth, rect.ex, rect.sy, depth, color);
-                self.draw_debug_line(rect.sx, rect.sy, depth, rect.sx, rect.ey, depth, color);
-                self.draw_debug_line(rect.ex, rect.sy, depth, rect.ex, rect.ey, depth, color);
-                self.draw_debug_line(rect.sx, rect.ey, depth, rect.ex, rect.ey, depth, color);
-            }
-            CoordinatePlane3D::YZ => {
-                self.draw_debug_line(depth, rect.sx, rect.sy, depth, rect.ex, rect.sy, color);
-                self.draw_debug_line(depth, rect.sx, rect.sy, depth, rect.sx, rect.ey, color);
-                self.draw_debug_line(depth, rect.ex, rect.sy, depth, rect.ex, rect.ey, color);
-                self.draw_debug_line(depth, rect.sx, rect.ey, depth, rect.ex, rect.ey, color);
-            }
-            CoordinatePlane3D::XZ => {
-                self.draw_debug_line(rect.sx, depth, rect.sy, rect.ex, depth, rect.sy, color);
-                self.draw_debug_line(rect.sx, depth, rect.sy, rect.sx, depth, rect.ey, color);
-                self.draw_debug_line(rect.ex, depth, rect.sy, rect.ex, depth, rect.ey, color);
-                self.draw_debug_line(rect.sx, depth, rect.ey, rect.ex, depth, rect.ey, color);
-            }
-        }
+    // Parallel to the XY plane
+    fn draw_debug_rect_xy(&mut self, depth: f32, rect: &Rect, color: Color) {
+        self.draw_debug_line(rect.sx, rect.sy, depth, rect.ex, rect.sy, depth, color);
+        self.draw_debug_line(rect.sx, rect.sy, depth, rect.sx, rect.ey, depth, color);
+        self.draw_debug_line(rect.ex, rect.sy, depth, rect.ex, rect.ey, depth, color);
+        self.draw_debug_line(rect.sx, rect.ey, depth, rect.ex, rect.ey, depth, color);
     }
 
     #[func]
@@ -118,23 +98,44 @@ impl Display {
         self.origin = [origin.x as usize, origin.y as usize, origin.z as usize];
         self.origin_f32 = [origin.x, origin.y, origin.z];
 
-        // Profile shadowcasting
-        let now = Instant::now();
-        let initial_slope_rect = Rect {
-            sx: INFINITY,
-            sy: INFINITY,
-            ex: 1.0,
-            ey: 1.0,
-        };
-        cast_light(self, &initial_slope_rect, 1, false);
-        let elapsed_time = now.elapsed();
-        println!(
-            "Running cast_light() took {} microseconds.",
-            elapsed_time.as_micros()
-        );
+        for initial_slope_rect in [
+            Rect {
+                sx: INFINITY,
+                sy: INFINITY,
+                ex: 1.0,
+                ey: 1.0,
+            },
+            Rect {
+                sx: -1.0,
+                sy: INFINITY,
+                ex: INFINITY,
+                ey: 1.0,
+            },
+            Rect {
+                sx: INFINITY,
+                sy: -1.0,
+                ex: 1.0,
+                ey: INFINITY,
+            },
+            Rect {
+                sx: -1.0,
+                sy: -1.0,
+                ex: INFINITY,
+                ey: INFINITY,
+            },
+        ] {
+            // Profile shadowcasting
+            let now = Instant::now();
+            cast_light(self, &initial_slope_rect, 1, false);
+            let elapsed_time = now.elapsed();
+            println!(
+                "Running cast_light() took {} microseconds.",
+                elapsed_time.as_micros()
+            );
 
-        // Visualize shadowcasting
-        cast_light(self, &initial_slope_rect, 1, true);
+            // Visualize shadowcasting
+            cast_light(self, &initial_slope_rect, 1, true);
+        }
     }
 }
 
@@ -145,16 +146,17 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug
         return;
     }
 
+    // Calculate offsets
     let x_off = display.origin[0];
     let y_off = display.origin[1];
     let z_off = display.origin[2];
-    
+
     let x_off_32 = x_off as f32;
     let y_off_32 = y_off as f32;
     let z_off_32 = display.origin_f32[2];
     let depth_32 = depth as f32;
-    
-    // Calculate start and end slopes of the visible rectangle at this depth
+
+    // Calculate the rectangle encompassing the view at this depth, given our slopes and offset (view rect)
     let view_rect = Rect {
         sx: ((depth_32 - 0.5) / slope_rect.sx) + x_off_32,
         sy: ((depth_32 - 0.5) / slope_rect.sy) + y_off_32,
@@ -162,12 +164,12 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug
         ey: ((depth_32 - 0.5) / slope_rect.ey) + y_off_32,
     };
 
-    // Visualize view rectangle at this depth
+    // Visualize view rectangle
     if draw_debug {
-        display.draw_debug_rect(CoordinatePlane3D::XY, depth_32 + z_off_32 - 0.5, &view_rect, Color::CYAN);
+        display.draw_debug_rect_xy(depth_32 + z_off_32 - 0.5, &view_rect, Color::CYAN);
     }
 
-    // Find start and end xy indices which could possibly occlude the view at this depth
+    // Find start and end xy indices which could possibly occlude the view
     let mut s_ix = view_rect.sx.floor() as usize;
     let mut s_iy = view_rect.sy.floor() as usize;
 
@@ -192,20 +194,43 @@ fn cast_light(display: &mut Display, slope_rect: &Rect, depth: usize, draw_debug
             {
                 let xf = x as f32;
                 let yf = y as f32;
+
+                // Grow rectangles to accomodate occlusion by the back sides of objects (treating them as cubes)
+                let mut grow_sx = 0.0;
+                if slope_rect.ex > 0.0 && slope_rect.ex.is_finite() {
+                    grow_sx = (xf - 0.5 - x_off_32) / (depth_32 + 0.5);
+                }
+
+                let mut grow_sy = 0.0;
+                if slope_rect.ey > 0.0 && slope_rect.ey.is_finite() {
+                    grow_sy = (yf - 0.5 - y_off_32) / (depth_32 + 0.5);
+                }
+
+                let mut grow_ex = 0.0;
+                if slope_rect.sx < 0.0 && slope_rect.sx.is_finite() {
+                    grow_ex = (xf + 0.5 - x_off_32) / (depth_32 + 0.5);
+                }
+
+                let mut grow_ey = 0.0;
+                if slope_rect.sy < 0.0 && slope_rect.sy.is_finite() {
+                    grow_ey = (yf + 0.5 - y_off_32) / (depth_32 + 0.5);
+                }
+
                 let rect_occluded = Rect {
-                    sx: xf - 0.5 - ((xf - 0.5) / (depth_32 + z_off_32 + 0.5)),
-                    sy: yf - 0.5 - ((yf - 0.5) / (depth_32 + z_off_32 + 0.5)),
-                    ex: xf + 0.5,
-                    ey: yf + 0.5,
+                    sx: xf - 0.5 - grow_sx,
+                    sy: yf - 0.5 - grow_sy,
+                    ex: xf + 0.5 - grow_ex,
+                    ey: yf + 0.5 - grow_ey,
                 };
+
                 if draw_debug {
-                    display.draw_debug_rect(
-                        CoordinatePlane3D::XY,
+                    display.draw_debug_rect_xy(
                         depth_32 + z_off_32 - 0.5,
                         &rect_occluded,
                         Color::RED,
                     );
                 }
+
                 occluding_rectangles.push(rect_occluded);
             }
             // here's where you would put your logic for showing/hiding the object at (x,y,depth)
@@ -257,6 +282,7 @@ impl Rect {
     }
 }
 
+// Boolean difference: remove all rectangles from rectangle
 fn rectangle_minus_rectangles(rectangle: Rect, rectangles: Vec<Rect>) -> Vec<Rect> {
     let mut result = vec![rectangle];
 
