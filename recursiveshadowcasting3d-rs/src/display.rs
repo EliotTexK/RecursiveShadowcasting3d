@@ -1,4 +1,8 @@
-use std::{f32::INFINITY, ops::{Add, Sub}, time::Instant};
+use std::{
+    f32::INFINITY,
+    ops::{Add, Sub},
+    time::Instant,
+};
 
 use godot::{obj::WithBaseField, prelude::*};
 use ndarray::Array3;
@@ -40,6 +44,17 @@ impl Rect {
             None
         }
     }
+
+    fn swap_start_and_end(&self) -> Rect {
+        Rect { sx: self.ex, sy: self.ey, ex: self.sx, ey: self.sy }
+    }
+
+    pub const ZERO: Rect = Rect {
+        sx: 0.0,
+        sy: 0.0,
+        ex: 0.0,
+        ey: 0.0,
+    };
 }
 
 impl Add for Rect {
@@ -170,10 +185,10 @@ impl Display {
                 ey: INFINITY,
             },
         ] {
-            for reverse_z in [false,true] {
+            for reverse_z in [false, true] {
                 // Profile shadowcasting
                 let now = Instant::now();
-                cast_light(self, &initial_slope_rect, 1, false, reverse_z);
+                cast_light_xy(self, &initial_slope_rect, 1, false, reverse_z);
                 let elapsed_time = now.elapsed();
                 println!(
                     "Running cast_light() took {} microseconds.",
@@ -181,7 +196,7 @@ impl Display {
                 );
 
                 // Visualize shadowcasting
-                cast_light(self, &initial_slope_rect, 1, true, reverse_z);
+                cast_light_xy(self, &initial_slope_rect, 1, true, reverse_z);
             }
         }
     }
@@ -189,7 +204,7 @@ impl Display {
 
 const MAX_DEPTH: usize = 15;
 
-fn cast_light(
+fn cast_light_xy(
     display: &mut Display,
     slope_rect: &Rect,
     depth: usize,
@@ -212,16 +227,28 @@ fn cast_light(
         false => -0.5,
     };
 
-    let view_rect = Rect {
-        sx: ((z_f32 + z_half_offset) / slope_rect.sx) + display.origin_float.x,
-        sy: ((z_f32 + z_half_offset) / slope_rect.sy) + display.origin_float.y,
-        ex: ((z_f32 + z_half_offset) / slope_rect.ex) + display.origin_float.x,
-        ey: ((z_f32 + z_half_offset) / slope_rect.ey) + display.origin_float.y,
+    let view_rect = match reverse_z {
+        true => Rect {
+            ex: ((z_f32 + z_half_offset) / slope_rect.sx) + display.origin_float.x,
+            ey: ((z_f32 + z_half_offset) / slope_rect.sy) + display.origin_float.y,
+            sx: ((z_f32 + z_half_offset) / slope_rect.ex) + display.origin_float.x,
+            sy: ((z_f32 + z_half_offset) / slope_rect.ey) + display.origin_float.y,
+        },
+        false => Rect {
+            sx: ((z_f32 + z_half_offset) / slope_rect.sx) + display.origin_float.x,
+            sy: ((z_f32 + z_half_offset) / slope_rect.sy) + display.origin_float.y,
+            ex: ((z_f32 + z_half_offset) / slope_rect.ex) + display.origin_float.x,
+            ey: ((z_f32 + z_half_offset) / slope_rect.ey) + display.origin_float.y,
+        },
     };
 
     // Visualize view rectangle
     if draw_debug {
-        display.draw_debug_rect_xy(z_f32 + display.origin_float.z + z_half_offset, &view_rect, Color::CYAN);
+        display.draw_debug_rect_xy(
+            z_f32 + display.origin_float.z + z_half_offset,
+            &view_rect,
+            Color::CYAN,
+        );
     }
 
     // Find start and end xy indices which could possibly occlude the view
@@ -247,36 +274,8 @@ fn cast_light(
                 .get((x, y, (z + display.origin.z) as usize))
                 .is_some_and(|occluded| *occluded)
             {
-                let xf = x as f32;
-                let yf = y as f32;
-
-                // Grow rectangles to accomodate occlusion by the back sides of objects (treating them as cubes)
-                let mut grow_sx = 0.0;
-                if slope_rect.ex > 0.0 && slope_rect.ex.is_finite() {
-                    grow_sx = (xf - 0.5 - display.origin_float.x) / (z_f32 + 0.5);
-                }
-
-                let mut grow_sy = 0.0;
-                if slope_rect.ey > 0.0 && slope_rect.ey.is_finite() {
-                    grow_sy = (yf - 0.5 - display.origin_float.y) / (z_f32 + 0.5);
-                }
-
-                let mut grow_ex = 0.0;
-                if slope_rect.sx < 0.0 && slope_rect.sx.is_finite() {
-                    grow_ex = (xf + 0.5 - display.origin_float.x) / (z_f32 + 0.5);
-                }
-
-                let mut grow_ey = 0.0;
-                if slope_rect.sy < 0.0 && slope_rect.sy.is_finite() {
-                    grow_ey = (yf + 0.5 - display.origin_float.y) / (z_f32 + 0.5);
-                }
-
-                let rect_occluded = Rect {
-                    sx: xf - 0.5 - grow_sx,
-                    sy: yf - 0.5 - grow_sy,
-                    ex: xf + 0.5 - grow_ex,
-                    ey: yf + 0.5 - grow_ey,
-                };
+                let rect_occluded =
+                    get_cube_occlusion(x as f32, y as f32, z_f32, display.origin_float, slope_rect, reverse_z);
 
                 if draw_debug {
                     display.draw_debug_rect_xy(
@@ -293,22 +292,77 @@ fn cast_light(
     }
 
     // Find the difference between the view rect and these rectangles,
-    // Decomposed into a small *enough* set of rectangles
     let unblocked = rectangle_minus_rectangles(view_rect, occluding_rectangles);
 
     // Convert unblocked rectangles back to slopes, then make recursive calls at next depth
     for rect in unblocked {
-        let new_slope_rect = Rect {
-            sx: (z_f32 + z_half_offset) / (rect.sx - display.origin_float.x),
-            sy: (z_f32 + z_half_offset) / (rect.sy - display.origin_float.y),
-            ex: (z_f32 + z_half_offset) / (rect.ex - display.origin_float.x),
-            ey: (z_f32 + z_half_offset) / (rect.ey - display.origin_float.y),
+        let new_slope_rect = match reverse_z {
+            true => Rect {
+                ex: (z_f32 + z_half_offset) / (rect.sx - display.origin_float.x),
+                ey: (z_f32 + z_half_offset) / (rect.sy - display.origin_float.y),
+                sx: (z_f32 + z_half_offset) / (rect.ex - display.origin_float.x),
+                sy: (z_f32 + z_half_offset) / (rect.ey - display.origin_float.y),
+            },
+            false => Rect {
+                sx: (z_f32 + z_half_offset) / (rect.sx - display.origin_float.x),
+                sy: (z_f32 + z_half_offset) / (rect.sy - display.origin_float.y),
+                ex: (z_f32 + z_half_offset) / (rect.ex - display.origin_float.x),
+                ey: (z_f32 + z_half_offset) / (rect.ey - display.origin_float.y),
+            },
         };
-        cast_light(display, &new_slope_rect, depth + 1, draw_debug, reverse_z);
+        cast_light_xy(display, &new_slope_rect, depth + 1, draw_debug, reverse_z);
+    }
+}
+
+/// Get occlusion from the front and side sides of a cube from some origin point, at some depth
+fn get_cube_occlusion(
+    x: f32,
+    y: f32,
+    z: f32,
+    origin: Vector3,
+    slope_rect: &Rect,
+    reverse_z: bool,
+) -> Rect {
+    let z_half_offset = match reverse_z {
+        true => 0.5,
+        false => -0.5,
+    };
+
+    let base_occluded = Rect {
+        sx: x - 0.5,
+        sy: y - 0.5,
+        ex: x + 0.5,
+        ey: y + 0.5,
+    };
+
+    // grow rectangle based on occlusion of cube side-faces
+    let mut extra = Rect::ZERO;
+
+    if slope_rect.ex > 0.0 && slope_rect.ex.is_finite() {
+        extra.sx = (x + z_half_offset - origin.x) / (z - z_half_offset);
+    }
+    if slope_rect.ey > 0.0 && slope_rect.ey.is_finite() {
+        extra.sy = (y + z_half_offset - origin.y) / (z - z_half_offset);
+    }
+    if slope_rect.sx < 0.0 && slope_rect.sx.is_finite() {
+        extra.ex = (x - z_half_offset - origin.x) / (z - z_half_offset);
+    }
+    if slope_rect.sy < 0.0 && slope_rect.sy.is_finite() {
+        extra.ey = (y - z_half_offset - origin.y) / (z - z_half_offset);
+    }
+
+    match reverse_z {
+        true => {
+            base_occluded + extra.swap_start_and_end()
+        },
+        false => {
+            base_occluded - extra
+        },
     }
 }
 
 /// Boolean difference: remove all rectangles from rectangle
+/// The result is decomposed into a *reasonably small* set of rectangles, (since optimally small is NP-hard)
 fn rectangle_minus_rectangles(rectangle: Rect, rectangles: Vec<Rect>) -> Vec<Rect> {
     let mut result = vec![rectangle];
 
