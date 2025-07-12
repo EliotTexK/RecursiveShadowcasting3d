@@ -9,6 +9,14 @@ use ndarray::Array3;
 
 use crate::debug_line_3d::DebugLine3D;
 
+const MAX_DEPTH: usize = 15;
+
+enum UnitPlane3d {
+    XY,
+    ZY,
+    ZX,
+}
+
 struct Rect {
     sx: f32,
     sy: f32,
@@ -46,7 +54,12 @@ impl Rect {
     }
 
     fn swap_start_and_end(&self) -> Rect {
-        Rect { sx: self.ex, sy: self.ey, ex: self.sx, ey: self.sy }
+        Rect {
+            sx: self.ex,
+            sy: self.ey,
+            ex: self.sx,
+            ey: self.sy,
+        }
     }
 
     pub const ZERO: Rect = Rect {
@@ -135,12 +148,25 @@ impl Display {
         // self.base_mut().add_child(&line);
     }
 
-    // Parallel to the XY plane
     fn draw_debug_rect_xy(&mut self, depth: f32, rect: &Rect, color: Color) {
         self.draw_debug_line(rect.sx, rect.sy, depth, rect.ex, rect.sy, depth, color);
         self.draw_debug_line(rect.sx, rect.sy, depth, rect.sx, rect.ey, depth, color);
         self.draw_debug_line(rect.ex, rect.sy, depth, rect.ex, rect.ey, depth, color);
         self.draw_debug_line(rect.sx, rect.ey, depth, rect.ex, rect.ey, depth, color);
+    }
+
+    fn draw_debug_rect_zy(&mut self, depth: f32, rect: &Rect, color: Color) {
+        self.draw_debug_line(depth, rect.sy, rect.sx, depth, rect.sy, rect.ex, color);
+        self.draw_debug_line(depth, rect.sy, rect.sx, depth, rect.ey, rect.sx, color);
+        self.draw_debug_line(depth, rect.sy, rect.ex, depth, rect.ey, rect.ex, color);
+        self.draw_debug_line(depth, rect.ey, rect.sx, depth, rect.ey, rect.ex, color);
+    }
+
+    fn draw_debug_rect_zx(&mut self, depth: f32, rect: &Rect, color: Color) {
+        self.draw_debug_line(rect.sy, depth, rect.sx, rect.sy, depth, rect.ex, color);
+        self.draw_debug_line(rect.sy, depth, rect.sx, rect.ey, depth, rect.sx, color);
+        self.draw_debug_line(rect.sy, depth, rect.ex, rect.ey, depth, rect.ex, color);
+        self.draw_debug_line(rect.ey, depth, rect.sx, rect.ey, depth, rect.ex, color);
     }
 
     #[func]
@@ -186,34 +212,51 @@ impl Display {
             },
         ] {
             for reverse_z in [false, true] {
-                // Profile shadowcasting
-                let now = Instant::now();
-                cast_light_xy(self, &initial_slope_rect, 1, false, reverse_z);
-                let elapsed_time = now.elapsed();
-                println!(
-                    "Running cast_light() took {} microseconds.",
-                    elapsed_time.as_micros()
-                );
+                for plane in [UnitPlane3d::XY, UnitPlane3d::ZX, UnitPlane3d::ZY] {
+                    // Profile shadowcasting
+                    let now = Instant::now();
+                    cast_light(self, &initial_slope_rect, 1, false, reverse_z, &plane);
+                    let elapsed_time = now.elapsed();
+                    println!(
+                        "Running cast_light() took {} microseconds.",
+                        elapsed_time.as_micros()
+                    );
 
-                // Visualize shadowcasting
-                cast_light_xy(self, &initial_slope_rect, 1, true, reverse_z);
+                    // Visualize shadowcasting
+                    cast_light(self, &initial_slope_rect, 1, true, reverse_z, &plane);
+                }
             }
         }
     }
 }
 
-const MAX_DEPTH: usize = 15;
-
-fn cast_light_xy(
+fn cast_light(
     display: &mut Display,
     slope_rect: &Rect,
     depth: usize,
     draw_debug: bool,
     reverse_z: bool,
+    plane: &UnitPlane3d,
 ) {
     if depth > MAX_DEPTH {
         return;
     }
+
+    let origin = match plane {
+        UnitPlane3d::XY => display.origin,
+        UnitPlane3d::ZY => Vector3i {
+            x: display.origin.z,
+            y: display.origin.y,
+            z: display.origin.x,
+        },
+        UnitPlane3d::ZX => Vector3i {
+            x: display.origin.z,
+            y: display.origin.x,
+            z: display.origin.y,
+        },
+    };
+
+    let origin_float = origin.cast_float();
 
     let z = match reverse_z {
         true => -(depth as i32),
@@ -229,26 +272,38 @@ fn cast_light_xy(
 
     let view_rect = match reverse_z {
         true => Rect {
-            ex: ((z_f32 + z_half_offset) / slope_rect.sx) + display.origin_float.x,
-            ey: ((z_f32 + z_half_offset) / slope_rect.sy) + display.origin_float.y,
-            sx: ((z_f32 + z_half_offset) / slope_rect.ex) + display.origin_float.x,
-            sy: ((z_f32 + z_half_offset) / slope_rect.ey) + display.origin_float.y,
+            ex: ((z_f32 + z_half_offset) / slope_rect.sx) + origin_float.x,
+            ey: ((z_f32 + z_half_offset) / slope_rect.sy) + origin_float.y,
+            sx: ((z_f32 + z_half_offset) / slope_rect.ex) + origin_float.x,
+            sy: ((z_f32 + z_half_offset) / slope_rect.ey) + origin_float.y,
         },
         false => Rect {
-            sx: ((z_f32 + z_half_offset) / slope_rect.sx) + display.origin_float.x,
-            sy: ((z_f32 + z_half_offset) / slope_rect.sy) + display.origin_float.y,
-            ex: ((z_f32 + z_half_offset) / slope_rect.ex) + display.origin_float.x,
-            ey: ((z_f32 + z_half_offset) / slope_rect.ey) + display.origin_float.y,
+            sx: ((z_f32 + z_half_offset) / slope_rect.sx) + origin_float.x,
+            sy: ((z_f32 + z_half_offset) / slope_rect.sy) + origin_float.y,
+            ex: ((z_f32 + z_half_offset) / slope_rect.ex) + origin_float.x,
+            ey: ((z_f32 + z_half_offset) / slope_rect.ey) + origin_float.y,
         },
     };
 
     // Visualize view rectangle
     if draw_debug {
-        display.draw_debug_rect_xy(
-            z_f32 + display.origin_float.z + z_half_offset,
-            &view_rect,
-            Color::CYAN,
-        );
+        match plane {
+            UnitPlane3d::XY => display.draw_debug_rect_xy(
+                z_f32 + origin_float.z + z_half_offset,
+                &view_rect,
+                Color::CYAN,
+            ),
+            UnitPlane3d::ZY => display.draw_debug_rect_zy(
+                z_f32 + origin_float.z + z_half_offset,
+                &view_rect,
+                Color::CYAN,
+            ),
+            UnitPlane3d::ZX => display.draw_debug_rect_zx(
+                z_f32 + origin_float.z + z_half_offset,
+                &view_rect,
+                Color::CYAN,
+            ),
+        }
     }
 
     // Find start and end xy indices which could possibly occlude the view
@@ -269,20 +324,58 @@ fn cast_light_xy(
     let mut occluding_rectangles: Vec<Rect> = Vec::new();
     for x in s_ix..e_ix {
         for y in s_iy..e_iy {
+            let mut x_check = 0;
+            let mut y_check = 0;
+            let mut z_check = 0;
+            match plane {
+                UnitPlane3d::XY => {
+                    x_check = x;
+                    y_check = y;
+                    z_check = (z + origin.z) as usize;
+                },
+                UnitPlane3d::ZY => {
+                    x_check = (z + origin.z) as usize;
+                    y_check = y;
+                    z_check = x;
+                },
+                UnitPlane3d::ZX => {
+                    x_check = y;
+                    y_check = (z + origin.z) as usize;
+                    z_check = x;
+                },
+            };
             if display
                 .occluded
-                .get((x, y, (z + display.origin.z) as usize))
+                .get((x_check, y_check, z_check))
                 .is_some_and(|occluded| *occluded)
             {
-                let rect_occluded =
-                    get_cube_occlusion(x as f32, y as f32, z_f32, display.origin_float, slope_rect, reverse_z);
+                let rect_occluded = get_cube_occlusion(
+                    x as f32,
+                    y as f32,
+                    z_f32,
+                    origin_float,
+                    slope_rect,
+                    reverse_z,
+                );
 
                 if draw_debug {
-                    display.draw_debug_rect_xy(
-                        z_f32 + display.origin_float.z + z_half_offset,
-                        &rect_occluded,
-                        Color::RED,
-                    );
+                    match plane {
+                        UnitPlane3d::XY => display.draw_debug_rect_xy(
+                            z_f32 + origin_float.z + z_half_offset,
+                            &rect_occluded,
+                            Color::RED,
+                        ),
+                        UnitPlane3d::ZY => display.draw_debug_rect_zy(
+                            z_f32 + origin_float.z + z_half_offset,
+                            &rect_occluded,
+                            Color::RED,
+                        ),
+                        UnitPlane3d::ZX => display.draw_debug_rect_zx(
+                            z_f32 + origin_float.z + z_half_offset,
+                            &rect_occluded,
+                            Color::RED,
+                        ),
+                    }
                 }
 
                 occluding_rectangles.push(rect_occluded);
@@ -298,19 +391,26 @@ fn cast_light_xy(
     for rect in unblocked {
         let new_slope_rect = match reverse_z {
             true => Rect {
-                ex: (z_f32 + z_half_offset) / (rect.sx - display.origin_float.x),
-                ey: (z_f32 + z_half_offset) / (rect.sy - display.origin_float.y),
-                sx: (z_f32 + z_half_offset) / (rect.ex - display.origin_float.x),
-                sy: (z_f32 + z_half_offset) / (rect.ey - display.origin_float.y),
+                ex: (z_f32 + z_half_offset) / (rect.sx - origin_float.x),
+                ey: (z_f32 + z_half_offset) / (rect.sy - origin_float.y),
+                sx: (z_f32 + z_half_offset) / (rect.ex - origin_float.x),
+                sy: (z_f32 + z_half_offset) / (rect.ey - origin_float.y),
             },
             false => Rect {
-                sx: (z_f32 + z_half_offset) / (rect.sx - display.origin_float.x),
-                sy: (z_f32 + z_half_offset) / (rect.sy - display.origin_float.y),
-                ex: (z_f32 + z_half_offset) / (rect.ex - display.origin_float.x),
-                ey: (z_f32 + z_half_offset) / (rect.ey - display.origin_float.y),
+                sx: (z_f32 + z_half_offset) / (rect.sx - origin_float.x),
+                sy: (z_f32 + z_half_offset) / (rect.sy - origin_float.y),
+                ex: (z_f32 + z_half_offset) / (rect.ex - origin_float.x),
+                ey: (z_f32 + z_half_offset) / (rect.ey - origin_float.y),
             },
         };
-        cast_light_xy(display, &new_slope_rect, depth + 1, draw_debug, reverse_z);
+        cast_light(
+            display,
+            &new_slope_rect,
+            depth + 1,
+            draw_debug,
+            reverse_z,
+            plane,
+        );
     }
 }
 
@@ -352,12 +452,8 @@ fn get_cube_occlusion(
     }
 
     match reverse_z {
-        true => {
-            base_occluded + extra.swap_start_and_end()
-        },
-        false => {
-            base_occluded - extra
-        },
+        true => base_occluded + extra.swap_start_and_end(),
+        false => base_occluded - extra,
     }
 }
 
